@@ -5,10 +5,54 @@ import threading
 import time
 import requests
 from io import BytesIO
-import RPi.GPIO as GPIO
 import base64
 import builtins
 import math, random, datetime, os, sys, json, re
+
+# Pyglet for real 3D models
+import pyglet
+from pyglet.gl import *
+
+# ---------------------------
+# 3D Model Class using pyglet
+# ---------------------------
+class Bn3DModel:
+    def __init__(self, file_path, name):
+        self.name = name
+        self.file_path = file_path
+        self.rotation = [0, 0, 0]  # x, y, z rotation
+        self.scale = 1.0
+        self.position = [0, 0, 0]
+        # Simple cube placeholder for demo
+        self.batch = pyglet.graphics.Batch()
+        self.vertex_list = self.create_cube()
+    
+    def create_cube(self):
+        vertices = [
+            1,1,1, -1,1,1, -1,-1,1, 1,-1,1,
+            1,1,-1, -1,1,-1, -1,-1,-1, 1,-1,-1
+        ]
+        colors = [255,0,0]*8 + [0,255,0]*8
+        return self.batch.add(8, GL_QUADS, None,
+                              ('v3f', vertices),
+                              ('c3B', colors))
+    
+    def draw(self):
+        glPushMatrix()
+        glTranslatef(*self.position)
+        glScalef(self.scale, self.scale, self.scale)
+        glRotatef(self.rotation[0], 1,0,0)
+        glRotatef(self.rotation[1], 0,1,0)
+        glRotatef(self.rotation[2], 0,0,1)
+        self.batch.draw()
+        glPopMatrix()
+    
+    def set_property(self, x=None, y=None, z=None, rotation=None, scale=None):
+        if x is not None: self.position[0] = x
+        if y is not None: self.position[1] = y
+        if z is not None: self.position[2] = z
+        if rotation is not None: self.rotation = rotation
+        if scale is not None: self.scale = scale
 
 # ---------------------------
 # BnScript Full Runtime
@@ -27,12 +71,6 @@ class BnScriptApp:
         # Styles
         self.styles = {"contain": {}, "button": {}, "printInside": {}, "img": {}, "frame": {}}
 
-        # Hardware
-        GPIO.setmode(GPIO.BCM)
-        self.led_states = {}
-        self.pwm_objects = {}
-        self.servo_objects = {}
-
         # Keyboard
         self.keys_pressed = set()
         self.root.bind("<KeyPress>", self._on_keypress)
@@ -41,7 +79,7 @@ class BnScriptApp:
         # Movable objects
         self.movable_objects = {}
 
-        # 3D Models placeholder
+        # 3D Models
         self.models = {}
 
         # Python built-ins and modules
@@ -106,25 +144,16 @@ class BnScriptApp:
         func()
         self.current_container = prev_container
 
-    # ---------------------------
-    # Print inside container
-    # ---------------------------
     def printInside(self, *texts):
         text = " ".join(str(t) for t in texts)
         label = tk.Label(self.current_container, text=text, **self.styles_to_kwargs("printInside"))
         label.pack()
 
-    # ---------------------------
-    # Buttons
-    # ---------------------------
     def button(self, text, func):
         btn = tk.Button(self.current_container, text=text, **self.styles_to_kwargs("button"),
                         command=lambda: threading.Thread(target=func).start())
         btn.pack(pady=5)
 
-    # ---------------------------
-    # Images
-    # ---------------------------
     def img(self, source, x=0, y=0, name=None):
         try:
             if source.startswith("http"):
@@ -148,9 +177,6 @@ class BnScriptApp:
             obj["y"] += dy
             obj["widget"].place(x=obj["x"], y=obj["y"])
 
-    # ---------------------------
-    # Frames
-    # ---------------------------
     def frame(self, url):
         label = tk.Label(self.current_container, text=f"[FRAME: {url}]", **self.styles_to_kwargs("frame"))
         label.pack(pady=5)
@@ -184,56 +210,6 @@ class BnScriptApp:
             label.pack(fill="x", padx=5, pady=2)
 
     # ---------------------------
-    # Hardware
-    # ---------------------------
-    def onLed(self, pin):
-        GPIO.setup(pin, GPIO.OUT)
-        GPIO.output(pin, GPIO.HIGH)
-        self.led_states[pin] = True
-
-    def offLed(self, pin):
-        GPIO.setup(pin, GPIO.OUT)
-        GPIO.output(pin, GPIO.LOW)
-        self.led_states[pin] = False
-
-    def toggleLed(self, pin):
-        GPIO.setup(pin, GPIO.OUT)
-        current = self.led_states.get(pin, False)
-        GPIO.output(pin, not current)
-        self.led_states[pin] = not current
-
-    def readButton(self, pin):
-        GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
-        return GPIO.input(pin) == GPIO.HIGH
-
-    def setBuzzer(self, pin, state):
-        GPIO.setup(pin, GPIO.OUT)
-        GPIO.output(pin, GPIO.HIGH if state else GPIO.LOW)
-
-    def setLedBrightness(self, pin, percent):
-        GPIO.setup(pin, GPIO.OUT)
-        if pin not in self.pwm_objects:
-            pwm = GPIO.PWM(pin, 1000)
-            pwm.start(percent)
-            self.pwm_objects[pin] = pwm
-        else:
-            self.pwm_objects[pin].ChangeDutyCycle(percent)
-
-    def setMotorSpeed(self, pin, percent):
-        self.setLedBrightness(pin, percent)
-
-    def setServo(self, pin, angle):
-        GPIO.setup(pin, GPIO.OUT)
-        if pin not in self.servo_objects:
-            pwm = GPIO.PWM(pin, 50)
-            pwm.start(0)
-            self.servo_objects[pin] = pwm
-        duty = angle / 18 + 2
-        self.servo_objects[pin].ChangeDutyCycle(duty)
-        time.sleep(0.5)
-        self.servo_objects[pin].ChangeDutyCycle(0)
-
-    # ---------------------------
     # Encoding
     # ---------------------------
     def toBinary(self, value):
@@ -263,68 +239,27 @@ class BnScriptApp:
         return base64.b64decode(value.encode()).decode()
 
     # ---------------------------
-    # Windows
-    # ---------------------------
-    def window(self, title, icon=None, width=400, height=300, func=None):
-        win = tk.Toplevel(self.root)
-        win.title(title)
-        win.geometry(f"{width}x{height}")
-        if icon:
-            try:
-                img = tk.PhotoImage(file=icon)
-                win.iconphoto(False, img)
-            except Exception as e:
-                print("Window icon load error:", e)
-        container = tk.Frame(win)
-        container.pack(fill="both", expand=True)
-        prev_container = self.current_container
-        self.current_container = container
-        if func: func()
-        self.current_container = prev_container
-        return win
-
-    # ---------------------------
-    # File chooser
-    # ---------------------------
-    def chooseFile(self, variable_name=None):
-        path = filedialog.askopenfilename()
-        if variable_name:
-            self.saved[variable_name] = path
-            self.update_saved_display()
-        return path
-
-    # ---------------------------
-    # Input box for variable
-    # ---------------------------
-    def inputVar(self, prompt, variable_name=None):
-        var = tk.StringVar()
-        frame = tk.Frame(self.current_container)
-        frame.pack(pady=5)
-        tk.Label(frame, text=prompt).pack(side="left")
-        entry = tk.Entry(frame, textvariable=var)
-        entry.pack(side="left")
-        tk.Button(frame, text="OK", command=lambda: (
-            self.Save(variable_name, var.get()) if variable_name else None
-        )).pack(side="left")
-        return var
-
-    # ---------------------------
-    # 3D model placeholders
+    # 3D Models
     # ---------------------------
     def add3DModel(self, file_path, name):
-        self.models[name] = {"file": file_path, "x": 0, "y": 0, "z": 0, "brightness": 1.0}
-        self.printInside(f"3D Model '{name}' added: {file_path}")
+        model = Bn3DModel(file_path, name)
+        self.models[name] = model
+        self.printInside(f"3D Model '{name}' loaded: {file_path}")
 
     def setModelProperty(self, name, **kwargs):
         model = self.models.get(name)
         if model:
-            for k, v in kwargs.items():
-                if k in model:
-                    model[k] = v
+            model.set_property(
+                x = kwargs.get("x", model.position[0]),
+                y = kwargs.get("y", model.position[1]),
+                z = kwargs.get("z", model.position[2]),
+                rotation = kwargs.get("rotation", model.rotation),
+                scale = kwargs.get("scale", model.scale)
+            )
             self.printInside(f"3D Model '{name}' updated: {kwargs}")
 
     # ---------------------------
-    # Call any Python function
+    # Call any Python / JS function
     # ---------------------------
     def callPython(self, func_name, *args, **kwargs):
         if func_name in self.bn_globals:
@@ -332,9 +267,6 @@ class BnScriptApp:
         else:
             raise ValueError(f"Python function '{func_name}' not found")
 
-    # ---------------------------
-    # Call JS-like function
-    # ---------------------------
     def callJS(self, name, *args):
         if name in self.console:  # console.log
             self.console[name](*args)
