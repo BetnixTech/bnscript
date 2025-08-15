@@ -7,9 +7,11 @@ import requests
 from io import BytesIO
 import RPi.GPIO as GPIO
 import base64
+import builtins
+import math, random, datetime, os, sys, json, re
 
 # ---------------------------
-# BnScript Full Runtime (3D + Input + File)
+# BnScript Full Runtime
 # ---------------------------
 class BnScriptApp:
     def __init__(self):
@@ -41,6 +43,25 @@ class BnScriptApp:
 
         # 3D Models placeholder
         self.models = {}
+
+        # Python built-ins and modules
+        self.bn_globals = {name: getattr(builtins, name) for name in dir(builtins)}
+        self.bn_globals.update({
+            "math": math,
+            "random": random,
+            "datetime": datetime,
+            "os": os,
+            "sys": sys,
+            "json": json,
+            "re": re,
+            "threading": threading,
+            "time": time
+        })
+
+        # JS-like functions
+        self.console = {"log": print}
+        self.setTimeout = lambda func, ms: threading.Timer(ms/1000, func).start()
+        self.now = lambda: int(time.time() * 1000)
 
     # ---------------------------
     # Keyboard
@@ -115,7 +136,6 @@ class BnScriptApp:
             label = tk.Label(self.current_container, image=photo)
             label.image = photo
             label.place(x=x, y=y)
-
             if name:
                 self.movable_objects[name] = {"widget": label, "x": x, "y": y}
         except Exception as e:
@@ -249,22 +269,17 @@ class BnScriptApp:
         win = tk.Toplevel(self.root)
         win.title(title)
         win.geometry(f"{width}x{height}")
-
         if icon:
             try:
                 img = tk.PhotoImage(file=icon)
                 win.iconphoto(False, img)
             except Exception as e:
                 print("Window icon load error:", e)
-
         container = tk.Frame(win)
         container.pack(fill="both", expand=True)
         prev_container = self.current_container
         self.current_container = container
-
-        if func:
-            func()
-
+        if func: func()
         self.current_container = prev_container
         return win
 
@@ -307,6 +322,28 @@ class BnScriptApp:
                 if k in model:
                     model[k] = v
             self.printInside(f"3D Model '{name}' updated: {kwargs}")
+
+    # ---------------------------
+    # Call any Python function
+    # ---------------------------
+    def callPython(self, func_name, *args, **kwargs):
+        if func_name in self.bn_globals:
+            return self.bn_globals[func_name](*args, **kwargs)
+        else:
+            raise ValueError(f"Python function '{func_name}' not found")
+
+    # ---------------------------
+    # Call JS-like function
+    # ---------------------------
+    def callJS(self, name, *args):
+        if name in self.console:  # console.log
+            self.console[name](*args)
+        elif name == "setTimeout":
+            self.setTimeout(*args)
+        elif name == "now":
+            return self.now()
+        else:
+            raise ValueError(f"JS function '{name}' not found")
 
     # ---------------------------
     # Run
