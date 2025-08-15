@@ -1,0 +1,60 @@
+bns = BnScriptApp()
+
+# ----------------------------
+# Styles
+# ----------------------------
+set_style("button", color="white", background_color="blue", font_size=14)
+set_style("contain", background_color="#f0f0f0")
+set_style("printInside", color="black", font_size=12)
+set_style("img", width=100, height=100)
+set_style("frame", background_color="#cccccc", width=400, height=300)
+
+# ----------------------------
+# Main Container
+# ----------------------------
+def main_container():
+    printInside("Welcome to BnScript Demo!")
+
+    # Button to print message
+    button("Click Me", lambda: printInside("Button Clicked!"))
+
+    # Button to choose a file
+    button("Choose File", lambda: printInside("File chosen:", chooseFile("myFile")))
+
+    # Image display
+    img("https://i.imgur.com/7bKQfYx.png", x=50, y=50, name="cat")
+
+    # Move image when space pressed
+    def move_cat_space():
+        if keyPressed("space"):
+            moveObject("cat", 10, 0)
+
+    # Save / Remove example
+    Save("score", 100)
+    button("Remove Score", lambda: RemoveFromSaved("score"))
+
+    # 3D Model example
+    add3DModel("model.obj", "cube")
+    setModelProperty("cube", x=0, y=0, z=0, rotation=[30, 45, 0], scale=1.5)
+
+    # Encoding example
+    text = "hello"
+    bin_text = toBinary(text)
+    printInside("Binary:", bin_text)
+    decoded_text = fromBinary(bin_text)
+    printInside("Decoded:", decoded_text)
+    b64_text = toBase64(text)
+    printInside("Base64:", b64_text)
+    decoded_b64 = fromBase64(b64_text)
+    printInside("Decoded Base64:", decoded_b64)
+
+    # Frame example
+    frame("https://example.com")
+
+# Run container
+contain(main_container)
+
+# ----------------------------
+# Run BnScript
+# ----------------------------
+run()
