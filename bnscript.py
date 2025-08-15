@@ -8,8 +8,7 @@ from io import BytesIO
 import base64
 import builtins
 import math, random, datetime, os, sys, json, re
-
-# Pyglet for real 3D models
+import binascii
 import pyglet
 from pyglet.gl import *
 
@@ -276,6 +275,23 @@ class BnScriptApp:
             return self.now()
         else:
             raise ValueError(f"JS function '{name}' not found")
+
+   def toHex(value):
+    """Convert a string, bytes, or number to hex representation."""
+     if isinstance(value, str):
+         return binascii.hexlify(value.encode()).decode()
+     elif isinstance(value, bytes):
+         return binascii.hexlify(value).decode()
+     else:
+         return binascii.hexlify(str(value).encode()).decode()
+         
+
+    def fromHex(hex_string):
+      """Convert a hex string back to a normal string."""
+      try:
+          return binascii.unhexlify(hex_string.encode()).decode()
+      except Exception:
+          return None
 
     # ---------------------------
     # Run
